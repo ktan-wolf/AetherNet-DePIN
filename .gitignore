@@ -1,0 +1,36 @@
+# Anchor build + ledger
+.anchor
+.anchor/program-logs
+target
+test-ledger
+
+# Dependencies
+node_modules
+.yarn
+
+# Rust backups
+**/*.rs.bk
+
+# Env files
+.env
+.env.local
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Logs
+yarn-error.log
+npm-debug.log
+
+# Solana keypairs (except program IDLs/deploy keys if you want to commit them)
+id.json
+
+# Coverage
+coverage
+
+# OS / Editor
+.DS_Store
+.vscode
+.idea
