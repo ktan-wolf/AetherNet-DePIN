@@ -3,7 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { Aethernet } from "../target/types/aethernet";
 import { assert } from "chai";
 
-describe("aethernet", () => {
+describe("AetherNet Program", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
   const program = anchor.workspace.Aethernet as Program<Aethernet>;
@@ -32,106 +32,135 @@ describe("aethernet", () => {
       .rpc();
   });
 
-  it("Registers a node", async () => {
-    const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-    const uri = "https://mydevice.example/metadata.json";
+  describe("Registering a Node", () => {
+    it("Registers a node successfully", async () => {
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const uri = "https://mydevice.example/metadata.json";
 
-    await program.methods
-      .registerNode(uri)
-      .accounts({
-        authority: provider.wallet.publicKey,
-        nodeDevice: nodeDeviceKeypair.publicKey,
-        networkStats: networkStatsPda,
-        systemProgram: anchor.web3.SystemProgram.programId,
-      })
-      .signers([nodeDeviceKeypair])
-      .rpc();
+      await program.methods
+        .registerNode(uri)
+        .accounts({
+          authority: provider.wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nodeDeviceKeypair])
+        .rpc();
 
-    // Fetch accounts
-    const nodeDevice = await program.account.nodeDevice.fetch(
-      nodeDeviceKeypair.publicKey
-    );
-    const networkStats = await program.account.networkStats.fetch(
-      networkStatsPda
-    );
+      // Fetch accounts
+      const nodeDevice = await program.account.nodeDevice.fetch(
+        nodeDeviceKeypair.publicKey
+      );
+      const networkStats = await program.account.networkStats.fetch(
+        networkStatsPda
+      );
 
-    // Assertions
-    assert.equal(
-      nodeDevice.authority.toBase58(),
-      provider.wallet.publicKey.toBase58()
-    );
-    assert.equal(nodeDevice.uri, uri);
-    assert.equal(networkStats.totalNodes.toNumber(), 1);
+      // Assertions
+      assert.equal(
+        nodeDevice.authority.toBase58(),
+        provider.wallet.publicKey.toBase58()
+      );
+      assert.equal(nodeDevice.uri, uri);
+      assert.equal(networkStats.totalNodes.toNumber(), 1);
+    });
+
+    it("Fails if URI is too long", async () => {
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      // Create oversized URI ( > 200 chars)
+      const oversizedUri = "https://example.com/" + "a".repeat(300);
+
+      let failed = false;
+      try {
+        await program.methods
+          .registerNode(oversizedUri)
+          .accounts({
+            authority: provider.wallet.publicKey,
+            nodeDevice: nodeDeviceKeypair.publicKey,
+            networkStats: networkStatsPda,
+            systemProgram: anchor.web3.SystemProgram.programId,
+          })
+          .signers([nodeDeviceKeypair])
+          .rpc();
+      } catch (err) {
+        failed = true;
+        console.log("Expected failure (URI too long):", err.error.errorMessage);
+      }
+
+      assert.equal(failed, true, "Oversized URI should cause failure");
+    });
   });
 
-  it("Prevent malicious user from deregistering another's node" , async () => {
-    const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-    const uri = "https://mydevice.example/metadata.json";
+  describe("Deregistering a Node", () => {
+    it("Prevents malicious user from deregistering another's node", async () => {
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const uri = "https://mydevice.example/metadata.json";
 
-    await program.methods
-      .registerNode(uri)
-      .accounts({
-        authority : provider.wallet.publicKey,
-        nodeDevice : nodeDeviceKeypair.publicKey,
-        networkStats: networkStatsPda,
-        systemProgram : anchor.web3.SystemProgram.programId,
-      })
-      .signers([nodeDeviceKeypair])
-      .rpc();
+      await program.methods
+        .registerNode(uri)
+        .accounts({
+          authority: provider.wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nodeDeviceKeypair])
+        .rpc();
 
-    const maliciousUser = anchor.web3.Keypair.generate();
+      const maliciousUser = anchor.web3.Keypair.generate();
 
-    let failed = false;
-    try{
+      let failed = false;
+      try {
+        await program.methods
+          .deregisterNode()
+          .accounts({
+            authority: maliciousUser.publicKey,
+            nodeDevice: nodeDeviceKeypair.publicKey,
+            networkStats: networkStatsPda,
+          })
+          .signers([maliciousUser])
+          .rpc();
+      } catch (err) {
+        failed = true;
+        console.log("Expected failure:", err.error.errorMessage);
+      }
+
+      assert.equal(failed, true, "Malicious deregister should fail");
+    });
+
+    it("Allows rightful authority to deregister their node", async () => {
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const uri = "https://mydevice.example/metadata.json";
+
+      await program.methods
+        .registerNode(uri)
+        .accounts({
+          authority: provider.wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .signers([nodeDeviceKeypair])
+        .rpc();
+
+      const before = (
+        await program.account.networkStats.fetch(networkStatsPda)
+      ).totalNodes.toNumber();
+
       await program.methods
         .deregisterNode()
         .accounts({
-          authority : maliciousUser.publicKey,
-          nodeDevice : nodeDeviceKeypair.publicKey,
+          authority: provider.wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
           networkStats: networkStatsPda,
         })
-        .signers([maliciousUser])
         .rpc();
-    } catch(err){
-      failed = true;
-      console.log("Expected failure :", err.error.errorMessage);
-    }
 
-    assert.equal(failed, true , "Malicious deregister should fail");
-  });
+      const after = (
+        await program.account.networkStats.fetch(networkStatsPda)
+      ).totalNodes.toNumber();
 
-  it("Allow the rightful authority to deregister their node" ,async () => {
-    const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-    const uri = "https://mydevice.example/metadata.json";
-
-    await program.methods
-      .registerNode(uri)
-      .accounts({
-        authority : provider.wallet.publicKey,
-        nodeDevice : nodeDeviceKeypair.publicKey,
-        networkStats : networkStatsPda,
-        systemProgram : anchor.web3.SystemProgram.programId,
-      })
-      .signers([nodeDeviceKeypair])
-      .rpc();
-
-    const before = (await program.account.networkStats.fetch(networkStatsPda)).totalNodes.toNumber();
-
-    await program.methods
-      .deregisterNode()
-      .accounts({
-        authority : provider.wallet.publicKey,
-        nodeDevice : nodeDeviceKeypair.publicKey,
-        networkStats : networkStatsPda,
-      })
-      .rpc();
-
-    const networkStats = await program.account.networkStats.fetch(
-      networkStatsPda
-    );
-
-    const after = (await program.account.networkStats.fetch(networkStatsPda)).totalNodes.toNumber();
-
-    assert.equal(after, before - 1);
+      assert.equal(after, before - 1);
+    });
   });
 });
