@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 // use anchor_lang::prelude::Account;
 
-declare_id!("4fgBUTa1mBSzTfwznhQtXTbQxnBtLzmg5vWHaaUoQBuf");
+declare_id!("8GKLUg4PFexgK1h4VCbF9KozwjMatNjhj192xoHLSU7U");
 
 #[derive(Accounts)]
 pub struct InitializeNetwork<'info>{
@@ -40,13 +40,16 @@ pub struct RegisterNode<'info>{
 
 #[derive(Accounts)]
 pub struct DeregisterNode<'info>{
+
+    #[account(mut)]
+    pub authority : Signer<'info>,
+
     #[account(mut , has_one = authority , close = authority)]
     pub node_device : Account<'info , NodeDevice>,
 
     #[account(mut)]
     pub network_stats : Account<'info , NetworkStats>,
 
-    pub authority : Signer<'info>
 }
 
 #[program]
@@ -71,7 +74,15 @@ pub mod aethernet {
         Ok(())
     }
 
-    pub fn deregister_node(ctx : Context<DeregisterNode> , uri : String) -> Result<()>{
+    pub fn deregister_node(ctx : Context<DeregisterNode>) -> Result<()>{
+        let stats = &mut ctx.accounts.network_stats;
+
+        if stats.total_nodes > 0{
+            stats.total_nodes -= 1;
+        }
+
+        msg!("after degregister : {}" , stats.total_nodes);
+
         Ok(())
     }
     

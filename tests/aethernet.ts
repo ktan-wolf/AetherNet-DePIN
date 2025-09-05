@@ -63,4 +63,75 @@ describe("aethernet", () => {
     assert.equal(nodeDevice.uri, uri);
     assert.equal(networkStats.totalNodes.toNumber(), 1);
   });
+
+  it("Prevent malicious user from deregistering another's node" , async () => {
+    const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+    const uri = "https://mydevice.example/metadata.json";
+
+    await program.methods
+      .registerNode(uri)
+      .accounts({
+        authority : provider.wallet.publicKey,
+        nodeDevice : nodeDeviceKeypair.publicKey,
+        networkStats: networkStatsPda,
+        systemProgram : anchor.web3.SystemProgram.programId,
+      })
+      .signers([nodeDeviceKeypair])
+      .rpc();
+
+    const maliciousUser = anchor.web3.Keypair.generate();
+
+    let failed = false;
+    try{
+      await program.methods
+        .deregisterNode()
+        .accounts({
+          authority : maliciousUser.publicKey,
+          nodeDevice : nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+        })
+        .signers([maliciousUser])
+        .rpc();
+    } catch(err){
+      failed = true;
+      console.log("Expected failure :", err.error.errorMessage);
+    }
+
+    assert.equal(failed, true , "Malicious deregister should fail");
+  });
+
+  it("Allow the rightful authority to deregister their node" ,async () => {
+    const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+    const uri = "https://mydevice.example/metadata.json";
+
+    await program.methods
+      .registerNode(uri)
+      .accounts({
+        authority : provider.wallet.publicKey,
+        nodeDevice : nodeDeviceKeypair.publicKey,
+        networkStats : networkStatsPda,
+        systemProgram : anchor.web3.SystemProgram.programId,
+      })
+      .signers([nodeDeviceKeypair])
+      .rpc();
+
+    const before = (await program.account.networkStats.fetch(networkStatsPda)).totalNodes.toNumber();
+
+    await program.methods
+      .deregisterNode()
+      .accounts({
+        authority : provider.wallet.publicKey,
+        nodeDevice : nodeDeviceKeypair.publicKey,
+        networkStats : networkStatsPda,
+      })
+      .rpc();
+
+    const networkStats = await program.account.networkStats.fetch(
+      networkStatsPda
+    );
+
+    const after = (await program.account.networkStats.fetch(networkStatsPda)).totalNodes.toNumber();
+
+    assert.equal(after, before - 1);
+  });
 });
