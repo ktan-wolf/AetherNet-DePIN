@@ -1,10 +1,97 @@
 use anchor_lang::prelude::*;
-// use anchor_lang::prelude::Account;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{self, Mint, TokenAccount, TokenInterface, Transfer},
+};
 
 declare_id!("8GKLUg4PFexgK1h4VCbF9KozwjMatNjhj192xoHLSU7U");
 
-/// Accounts required for initializing the network.
-/// Creates a global NetworkStats account to track total registered nodes.
+// Define a constant for the maximum URI length for consistency.
+const MAX_URI_LENGTH: usize = 256;
+
+#[program]
+pub mod aethernet {
+    use super::*;
+
+    /// Initializes the network by creating the NetworkStats account.
+    pub fn initialize_network(ctx: Context<InitializeNetwork>) -> Result<()> {
+        let stats = &mut ctx.accounts.network_stats;
+        stats.total_nodes = 0;
+        msg!("Network initialized with total_nodes = 0");
+        Ok(())
+    }
+
+    /// Registers a new node device with a URI and stakes tokens.
+    pub fn register_node(ctx: Context<RegisterNode>, uri: String) -> Result<()> {
+        // Add a check to ensure the URI isn't too long. This gives a clean, predictable error.
+        require!(uri.len() <= MAX_URI_LENGTH, AethernetError::UriTooLong);
+
+        let stake_amount = 10 * 10u64.pow(ctx.accounts.mint.decimals as u32);
+
+        // CPI transfer: user → vault
+        let cpi_accounts = Transfer {
+            from: ctx.accounts.user_token_account.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.authority.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token_interface::transfer(cpi_ctx, stake_amount)?;
+
+        // Initialize node device
+        let node_device = &mut ctx.accounts.node_device;
+        node_device.authority = ctx.accounts.authority.key();
+        node_device.uri = uri;
+
+        // Update network stats
+        let network_stats = &mut ctx.accounts.network_stats;
+        network_stats.total_nodes += 1;
+
+        msg!(
+            "Node registered. Authority: {}, Total nodes: {}",
+            node_device.authority,
+            network_stats.total_nodes
+        );
+
+        Ok(())
+    }
+
+    /// Deregisters (removes) a node device and unstakes tokens.
+    pub fn deregister_node(ctx: Context<DeregisterNode>) -> Result<()> {
+        let stake_amount = 10 * 10u64.pow(ctx.accounts.mint.decimals as u32);
+
+        // Define PDA signer seeds properly
+        let vault_seeds: &[&[u8]] = &[b"vault", &[ctx.bumps.vault]];
+        let signer_seeds: &[&[&[u8]]] = &[vault_seeds];
+
+        // CPI transfer: vault → user
+        let cpi_accounts_transfer = Transfer {
+            from: ctx.accounts.vault_token_account.to_account_info(),
+            to: ctx.accounts.user_token_account.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        let cpi_program_transfer = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx_transfer =
+            CpiContext::new_with_signer(cpi_program_transfer, cpi_accounts_transfer, signer_seeds);
+
+        token_interface::transfer(cpi_ctx_transfer, stake_amount)?;
+
+        // Update stats
+        let stats = &mut ctx.accounts.network_stats;
+        if stats.total_nodes > 0 {
+            stats.total_nodes -= 1;
+        }
+
+        msg!(
+            "Node deregistered. Authority: {}, Total nodes: {}",
+            ctx.accounts.authority.key(),
+            stats.total_nodes
+        );
+
+        Ok(())
+    }
+}
+
 #[derive(Accounts)]
 pub struct InitializeNetwork<'info> {
     #[account(
@@ -16,103 +103,100 @@ pub struct InitializeNetwork<'info> {
     )]
     pub network_stats: Account<'info, NetworkStats>,
 
-    /// The authority that initializes the network.
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    /// System program for account initialization.
     pub system_program: Program<'info, System>,
 }
 
-/// Accounts required for registering a new node.
 #[derive(Accounts)]
 pub struct RegisterNode<'info> {
-    /// The authority who owns this node.
     #[account(mut)]
     pub authority: Signer<'info>,
+
+    #[account(mut)]
+    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        init_if_needed,
+        payer = authority,
+        associated_token::mint = mint,
+        associated_token::authority = vault
+    )]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+    
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(
+        seeds = [b"vault"],
+        bump
+    )]
+    /// PDA vault, authority of vault_token_account
+    pub vault: SystemAccount<'info>,
 
     #[account(
         init,
         payer = authority,
-        // discriminator (8) + authority pubkey (32) + string prefix (4) + max URI length (200)
-        space = 8 + 32 + 4 + 200
+        // Use the constant here for space calculation
+        space = 8 + 32 + 4 + MAX_URI_LENGTH
     )]
     pub node_device: Account<'info, NodeDevice>,
 
-    #[account(mut)]
+    #[account(mut, seeds = [b"network-stats"], bump)]
     pub network_stats: Account<'info, NetworkStats>,
 
     pub system_program: Program<'info, System>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub rent: Sysvar<'info, Rent>,
 }
 
-/// Accounts required for deregistering a node.
 #[derive(Accounts)]
 pub struct DeregisterNode<'info> {
-    /// The rightful authority who owns this node.
     #[account(mut)]
     pub authority: Signer<'info>,
 
-    /// The node device account being closed.
-    /// Must belong to the same authority.
     #[account(mut, has_one = authority, close = authority)]
     pub node_device: Account<'info, NodeDevice>,
 
-    #[account(mut)]
+    #[account(mut, seeds = [b"network-stats"], bump)]
     pub network_stats: Account<'info, NetworkStats>,
+
+    pub mint: InterfaceAccount<'info, Mint>,
+
+    #[account(mut)]
+    pub user_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        associated_token::mint = mint,
+        associated_token::authority = vault
+    )]
+    pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        seeds = [b"vault"],
+        bump
+    )]
+    pub vault: SystemAccount<'info>,
+
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
-#[program]
-pub mod aethernet {
-    use super::*;
-
-    /// Initializes the network by creating the NetworkStats account.
-    pub fn initialize_network(ctx: Context<InitializeNetwork>) -> Result<()> {
-        let stats = &mut ctx.accounts.network_stats;
-        stats.total_nodes = 0;
-        Ok(())
-    }
-
-    /// Registers a new node device with a URI.
-    /// Increments the total node count in NetworkStats.
-    pub fn register_node(ctx: Context<RegisterNode>, uri: String) -> Result<()> {
-        let node_device = &mut ctx.accounts.node_device;
-        let authority = &ctx.accounts.authority;
-        let network_stats = &mut ctx.accounts.network_stats;
-
-        node_device.authority = authority.key();
-        node_device.uri = uri;
-
-        network_stats.total_nodes += 1;
-
-        Ok(())
-    }
-
-    /// Deregisters (removes) a node device.
-    /// Decrements the total node count in NetworkStats.
-    pub fn deregister_node(ctx: Context<DeregisterNode>) -> Result<()> {
-        let stats = &mut ctx.accounts.network_stats;
-
-        if stats.total_nodes > 0 {
-            stats.total_nodes -= 1;
-        }
-
-        msg!("after deregister: {}", stats.total_nodes);
-
-        Ok(())
-    }
-}
-
-/// Tracks the total number of registered nodes.
 #[account]
 pub struct NetworkStats {
-    total_nodes: u64,
+    pub total_nodes: u64,
 }
 
-/// Represents a registered node device.
 #[account]
 pub struct NodeDevice {
-    /// The authority (owner) of this device.
     pub authority: Pubkey,
-    /// The device's URI (metadata location).
     pub uri: String,
+}
+
+// Define a custom error enum for cleaner error handling.
+#[error_code]
+pub enum AethernetError {
+    #[msg("The provided URI is too long.")]
+    UriTooLong,
 }
