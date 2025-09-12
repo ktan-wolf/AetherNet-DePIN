@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-aethernet = "BJJRckC14Vrp4zTj3jN5vZoD5TjgApBF9H8nfexb8GUk"
+aethernet = "HQvqX5DpDonJN2YjshaTSrRRJmZvBe3fhYGy7aSvceuT"
 
 [registry]
 url = "https://api.apr.dev"

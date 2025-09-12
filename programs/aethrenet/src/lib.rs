@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount, TokenInterface, Transfer},
 };
 
-declare_id!("BJJRckC14Vrp4zTj3jN5vZoD5TjgApBF9H8nfexb8GUk");
+declare_id!("HQvqX5DpDonJN2YjshaTSrRRJmZvBe3fhYGy7aSvceuT");
 
 // Define a constant for the maximum URI length for consistency.
 const MAX_URI_LENGTH: usize = 256;
