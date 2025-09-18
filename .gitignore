@@ -24,8 +24,13 @@ build
 yarn-error.log
 npm-debug.log
 
-# Solana keypairs (except program IDLs/deploy keys if you want to commit them)
+# Solana keypairs (never commit private keys!)
 id.json
+**/*-keypair.json
+target/deploy/*.json
+
+# But keep Anchor IDLs (safe to commit, needed for clients)
+!target/idl/*.json
 
 # Coverage
 coverage

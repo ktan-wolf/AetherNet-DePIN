@@ -4,7 +4,7 @@ use anchor_spl::{
     token_interface::{self, Mint, TokenAccount, TokenInterface, Transfer},
 };
 
-declare_id!("3je23jfTQJBkYTYhLCBjH2F9thAcaY9g7M7RYR92uhWu");
+declare_id!("5LzZhK83HbsJPTC877hRcfCZLg1cZvqDUQgLL3BxLYb4");
 
 // Define a constant for the maximum URI length for consistency.
 const MAX_URI_LENGTH: usize = 256;
@@ -200,69 +200,3 @@ pub enum AethernetError {
     #[msg("The provided URI is too long.")]
     UriTooLong,
 }
-
-// use anchor::lang::prelude::*;
-// use anchor::spl::{
-//     associated_token :: AssociatedToken,
-//     token_interface :: {self , Mint , TokenAccount , TokenInterface , Transfer}
-// };
-
-// declare_id !("dasfkj;das");
-
-// const max_uri = 256;
-
-// #[program]
-
-// #[derive(Accounts)]
-// pub struct InitializeNetwork<'info>{
-//     #[account(
-//         init , 
-//         payer = authority,
-//         seeds = [b"network-stats"],
-//         bump
-//     )]
-//     pub network_stats : Accounts<'info , NetworkStats>,
-
-//     #[account(mut)]
-//     pub authority : Signer<'info>,
-
-//     pub system_program : Program<'info , System>,
-// }
-
-// #[derive(Accounts)]
-// pub struct RegisterNode<'info>{
-//     #[account(mut)]
-//     pub authority : Signer<'info>,
-
-//     #[account(mut , seeds = [b"network-stats"] , bump)]
-//     pub network_stats : Accounts<'info , NetworkStats>,
-
-//     #[account(
-//         init_if_needed , 
-//         payer = authority,
-//         associated_token :: mint = mint,
-//         associated_token :: authority = vault,
-//     )]
-//     pub vault_account : InterfaceAccount<'info , TokenAccount>,
-
-//     pub mint : InterfaceAccount<'info , TokenAccount>,
-
-//     #[account(
-//         seeds = [b"vault"],
-//         bump
-//     )]
-//     pub vault : SystemAccount<'info>,
-
-    
-// }
-
-// #[account]
-// pub struct NetworkStates{
-//     pub total_nodes : u64,
-// }
-
-// #[account]
-// pub struct NodeDevice{
-//     pub authority : PubKey,
-//     pub uri : String,
-// }
