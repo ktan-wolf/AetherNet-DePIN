@@ -34,16 +34,16 @@ The system is composed of three core components: the Solana Program, the Indexer
 ```mermaid
 graph TD
     subgraph "Browser"
-        A[🌐 Frontend dApp <br>(Next.js)]
+        A["🌐 Frontend dApp <br>(Next.js)"]
     end
 
     subgraph "Backend Services"
-        B{🚀 REST API <br>(Rust/Axum)} --- E[(🐘 PostgreSQL DB)]
-        C[🔄 Indexer <br>(Rust/SQLx)] --> E
+        B{"🚀 REST API <br>(Rust/Axum)"} --- E[("🐘 PostgreSQL DB")]
+        C["🔄 Indexer <br>(Rust/SQLx)"] --> E
     end
 
     subgraph "Solana Blockchain (Localnet/Devnet)"
-        D[⛓️ Solana Program <br>(Anchor/Rust)]
+        D["⛓️ Solana Program <br>(Anchor/Rust)"]
     end
 
     A -- " Fetches node data via HTTP GET" --> B
@@ -73,7 +73,9 @@ graph TD
 # Indexer & API Service (/indexer)
 * Technology: Rust with Tokio, SQLx (for database), and Axum (for the API).
 
-* Responsibility: This service acts as the bridge between the on-chain world and the frontend, providing fast and efficient data access. It runs as two concurrent tasks:
+**Responsibility** 
+
+* This service acts as the bridge between the on-chain world and the frontend, providing fast and efficient data access. It runs as two concurrent tasks:
 
 * The Indexer: A background task that continuously polls the Solana blockchain for all accounts owned by our program. It deserializes the raw account data into a structured format and "upserts" it into a PostgreSQL database. This keeps the database in sync with the blockchain state.
 
@@ -84,7 +86,7 @@ graph TD
 
 * Responsibility: This is the user-facing application.
 
-* Key Interactions:
+**Key Interactions**
 
 * Reading Data: It fetches the list of all registered nodes by making a simple HTTP request to the Rust API (http://localhost:3000/nodes), ensuring the page loads instantly.
 
