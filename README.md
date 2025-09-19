@@ -26,28 +26,69 @@ This repository serves as a comprehensive template for developers looking to bui
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Project Architecture
+AetherNet is designed with a scalable, multi-tiered architecture that separates on-chain logic from off-chain data services. This ensures that the user interface remains fast and responsive, regardless of the amount of data on the blockchain.
 
-The project is structured into four main components that work together to deliver a seamless experience. The indexer acts as a critical off-chain layer, allowing the frontend to load data instantly without making expensive RPC calls for all users.
+The system is composed of three core components: the Solana Program, the Indexer & API Service, and the Frontend dApp.
 
 ```mermaid
-graph LR
-    subgraph "Off-Chain Services"
-        A[🌐 Frontend dApp <br>(Next.js)] --> B{🚀 REST API <br>(Rust/Axum)};
-        B --> E[(🐘 PostgreSQL <br>Database)];
-        C[🔄 Indexer <br>(Rust/SQLx)] --> E;
+graph TD
+    subgraph "Browser"
+        A[🌐 Frontend dApp <br>(Next.js)]
     end
 
-    subgraph "On-Chain"
-         D[⛓️ Solana Program <br>(Anchor/Rust)];
+    subgraph "Backend Services"
+        B{🚀 REST API <br>(Rust/Axum)} --- E[(🐘 PostgreSQL DB)]
+        C[🔄 Indexer <br>(Rust/SQLx)] --> E
     end
-    
-    C -- Polls --> D;
-    A -- Transactions --> D;
 
-    style A fill:#222,stroke:#0f0,stroke-width:2px
-    style D fill:#222,stroke:#f90,stroke-width:2px
+    subgraph "Solana Blockchain (Localnet/Devnet)"
+        D[⛓️ Solana Program <br>(Anchor/Rust)]
+    end
+
+    A -- " Fetches node data via HTTP GET" --> B
+    A -- " Sends transactions (register/deregister)" --> D
+    C -- " Polls for account changes" --> D
+
+    style A fill:#0d1117,stroke:#30a0e0,stroke-width:2px
+    style B fill:#0d1117,stroke:#f0a030,stroke-width:2px
+    style C fill:#0d1117,stroke:#f0a030,stroke-width:2px
+    style D fill:#0d1117,stroke:#9030f0,stroke-width:2px
+    style E fill:#0d1117,stroke:#30e0a0,stroke-width:2px
 ```
+
+#  Solana Program (/programs/aethernet)
+* Technology: Rust with the Anchor Framework.
+
+* Responsibility: This is the on-chain heart of the application. It defines the core logic and the structure of the data accounts (NodeDevice, NetworkStats).
+
+**Key Functions:**
+
+* register_node: Creates a NodeDevice account for a user and stakes their SPL tokens.
+
+* deregister_node: Closes the NodeDevice account and returns the staked tokens.
+
+* initialize_network: Sets up the initial state for the network.
+
+# Indexer & API Service (/indexer)
+* Technology: Rust with Tokio, SQLx (for database), and Axum (for the API).
+
+* Responsibility: This service acts as the bridge between the on-chain world and the frontend, providing fast and efficient data access. It runs as two concurrent tasks:
+
+* The Indexer: A background task that continuously polls the Solana blockchain for all accounts owned by our program. It deserializes the raw account data into a structured format and "upserts" it into a PostgreSQL database. This keeps the database in sync with the blockchain state.
+
+* The REST API: An Axum web server that exposes endpoints (e.g., /nodes) for the frontend to query. Instead of hitting the blockchain directly for data, the frontend asks this API, which reads directly from the fast, indexed PostgreSQL database.
+
+# Frontend dApp (/dapp)
+* Technology: Next.js, React, TypeScript, and Solana Wallet Adapter.
+
+* Responsibility: This is the user-facing application.
+
+* Key Interactions:
+
+* Reading Data: It fetches the list of all registered nodes by making a simple HTTP request to the Rust API (http://localhost:3000/nodes), ensuring the page loads instantly.
+
+* Writing Data: When a user wants to perform an action that changes state (like registering or deregistering a node), it uses the connected wallet to build, sign, and send a transaction directly to the on-chain Solana program.
 
 ## ⚡ Tech Stack
 
@@ -82,7 +123,7 @@ Make sure you have the following installed:
 * Docker
 
 ## 📦 Sub-Projects
-# Indexer (indexer)
+# Indexer
 
 A Rust-based indexer that connects to the Solana blockchain, listens for on-chain events, and stores structured data in PostgreSQL.
 
@@ -94,7 +135,7 @@ A Rust-based indexer that connects to the Solana blockchain, listens for on-chai
 
 * github link : [**Indexer Repo**](https://github.com/ktan-wolf/Indexer) 
 
-# Frontend dApp (/frontend)
+# Frontend dApp
 
 * A Next.js + TypeScript application serving as the main user interface.
 
