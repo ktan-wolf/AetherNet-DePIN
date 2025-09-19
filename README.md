@@ -71,6 +71,17 @@ graph TD
 * initialize_network: Sets up the initial state for the network.
 
 # Indexer & API Service (/indexer)
+
+A Rust-based indexer that connects to the Solana blockchain, listens for on-chain events, and stores structured data in PostgreSQL.
+
+* Written in Rust with SQLx for database handling
+
+* Ensures efficient synchronization of blockchain state with off-chain storage
+
+* Provides reliable data for the API layer
+
+* github link : [**Indexer Repo**](https://github.com/ktan-wolf/Indexer) 
+
 * Technology: Rust with Tokio, SQLx (for database), and Axum (for the API).
 
 **Responsibility** 
@@ -82,13 +93,26 @@ graph TD
 * The REST API: An Axum web server that exposes endpoints (e.g., /nodes) for the frontend to query. Instead of hitting the blockchain directly for data, the frontend asks this API, which reads directly from the fast, indexed PostgreSQL database.
 
 # Frontend dApp (/dapp)
+
+* A Next.js + TypeScript application serving as the main user interface.
+
+* Built with React, Next.js, TailwindCSS
+
+* Connects directly to Solana wallets and the backend API
+
+* Displays live DePIN data from the indexer
+
+* Designed for scalability and a smooth developer experience
+
+* github link : [**Dapp Repo**](https://github.com/ktan-wolf/Dapp) 
+
 * Technology: Next.js, React, TypeScript, and Solana Wallet Adapter.
 
 * Responsibility: This is the user-facing application.
 
 **Key Interactions**
 
-* Reading Data: It fetches the list of all registered nodes by making a simple HTTP request to the Rust API (http://localhost:3000/nodes), ensuring the page loads instantly.
+* Reading Data: It fetches the list of all registered nodes by making a simple HTTP request to the Rust API (https://indexer-o06a.onrender.com/nodes), ensuring the page loads instantly.
 
 * Writing Data: When a user wants to perform an action that changes state (like registering or deregistering a node), it uses the connected wallet to build, sign, and send a transaction directly to the on-chain Solana program.
 
@@ -124,29 +148,4 @@ Make sure you have the following installed:
 
 * Docker
 
-## 📦 Sub-Projects
-# Indexer
 
-A Rust-based indexer that connects to the Solana blockchain, listens for on-chain events, and stores structured data in PostgreSQL.
-
-* Written in Rust with SQLx for database handling
-
-* Ensures efficient synchronization of blockchain state with off-chain storage
-
-* Provides reliable data for the API layer
-
-* github link : [**Indexer Repo**](https://github.com/ktan-wolf/Indexer) 
-
-# Frontend dApp
-
-* A Next.js + TypeScript application serving as the main user interface.
-
-* Built with React, Next.js, TailwindCSS
-
-* Connects directly to Solana wallets and the backend API
-
-* Displays live DePIN data from the indexer
-
-* Designed for scalability and a smooth developer experience
-
-* github link : [**Dapp Repo**](https://github.com/ktan-wolf/Dapp) 
