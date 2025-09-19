@@ -57,7 +57,7 @@ graph TD
     style E fill:#0d1117,stroke:#30e0a0,stroke-width:2px
 ```
 
-#  Solana Program (/programs/aethernet)
+#  Solana Program (Current Repo)
 * Technology: Rust with the Anchor Framework.
 
 * Responsibility: This is the on-chain heart of the application. It defines the core logic and the structure of the data accounts (NodeDevice, NetworkStats).
@@ -70,7 +70,7 @@ graph TD
 
 * initialize_network: Sets up the initial state for the network.
 
-# Indexer & API Service (/indexer)
+# Indexer & API Service
 
 A Rust-based indexer that connects to the Solana blockchain, listens for on-chain events, and stores structured data in PostgreSQL.
 
@@ -92,7 +92,7 @@ A Rust-based indexer that connects to the Solana blockchain, listens for on-chai
 
 * The REST API: An Axum web server that exposes endpoints (e.g., /nodes) for the frontend to query. Instead of hitting the blockchain directly for data, the frontend asks this API, which reads directly from the fast, indexed PostgreSQL database.
 
-# Frontend dApp (/dapp)
+# Frontend dApp
 
 * A Next.js + TypeScript application serving as the main user interface.
 
