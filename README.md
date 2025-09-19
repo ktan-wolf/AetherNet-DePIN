@@ -145,7 +145,7 @@ Make sure you have the following installed:
 ### 2. Clone and Install
 ```bash
 # Clone the repository (or repositories)
-git clone [https://github.com/ktan-wolf/AetherNet-DePIN](https://github.com/ktan-wolf/AetherNet-DePIN)
+git clone https://github.com/ktan-wolf/AetherNet-DePIN
 cd aethernet-depin
 
 # Install all Node.js dependencies
@@ -178,7 +178,7 @@ Open two more separate terminals for the indexer and the frontend.
 
 **Terminal 1: Start the Indexer & API**
 ```bash
-git clone [https://github.com/ktan-wolf/Indexer](https://github.com/ktan-wolf/Indexer)
+git clone https://github.com/ktan-wolf/Indexer
 cd indexer
 cargo run
 ```
@@ -186,7 +186,7 @@ cargo run
 
 **Terminal 2: Start the Frontend dApp**
 ```bash
-git clone [https://github.com/ktan-wolf/Dapp](https://github.com/ktan-wolf/Dapp)
+git clone https://github.com/ktan-wolf/Dapp
 cd dapp
 pnpm install
 pnpm dev
