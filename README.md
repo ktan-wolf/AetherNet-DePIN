@@ -129,23 +129,80 @@ A Rust-based indexer that connects to the Solana blockchain, listens for on-chai
 * **DevOps**: Docker, Yarn, ts-mocha, chai
 
 ## 🚀 Local Development Setup
+
 Follow these steps to set up and run the entire AetherNet stack on your local machine.
 
-1. **Prerequisites**
+### 1. Prerequisites
 Make sure you have the following installed:
-
 * Node.js (v18 or higher)
-
-* Yarn (npm install -g yarn)
-
+* Yarn (`npm install -g yarn`)
 * Rust & Cargo
-
 * Solana CLI
-
 * Anchor CLI
-
-* PostgreSQL Client (psql)
-
+* PostgreSQL Client (`psql`)
 * Docker
 
+### 2. Clone and Install
+```bash
+# Clone the repository (or repositories)
+git clone [https://github.com/ktan-wolf/AetherNet-DePIN](https://github.com/ktan-wolf/AetherNet-DePIN)
+cd aethernet-depin
 
+# Install all Node.js dependencies
+yarn install
+```
+
+### 3. Start the Database
+```bash
+# Start a PostgreSQL container in the background
+docker-compose up -d
+
+# Wait a few seconds, then apply the database schema
+psql -h localhost -U aethernet_user -d aethernet -f migrations/schema.sql
+```
+
+### 4. Build and Deploy Solana Program
+This will start a local validator, deploy the program, and run tests which create a necessary SPL Token mint.
+
+```bash
+# Start a local Solana validator in a separate terminal
+solana-test-validator
+
+# In your main terminal, build and deploy the program
+anchor build
+anchor deploy
+```
+
+### 5. Start the Services
+Open two more separate terminals for the indexer and the frontend.
+
+**Terminal 1: Start the Indexer & API**
+```bash
+git clone [https://github.com/ktan-wolf/Indexer](https://github.com/ktan-wolf/Indexer)
+cd indexer
+cargo run
+```
+> You should see logs indicating a successful connection to both Solana and the database, and the API server listening on `http://localhost:8081`.
+
+**Terminal 2: Start the Frontend dApp**
+```bash
+git clone [https://github.com/ktan-wolf/Dapp](https://github.com/ktan-wolf/Dapp)
+cd dapp
+pnpm install
+pnpm dev
+```
+> Your Next.js application will now be running at `http://localhost:3000`.
+
+You're all set! Open your browser to `http://localhost:3000` to use the dApp. You will need a Solana wallet (only Phantom) connected to your local network.
+
+---
+
+## 🤝 Contributing
+
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/ktan-wolf/aethernet-depin/issues).
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License. See the `LICENSE` file for details.
