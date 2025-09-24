@@ -284,4 +284,87 @@ describe("AetherNet Program", () => {
       }
     });
   });
+
+
+  describe("Node URI Update", () => {
+    it("Allows the authority to update the node URI", async () => {
+      // --- SETUP: register a new node ---
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const initialUri = "https://initial-node-uri.com/node.json";
+
+      await program.methods
+        .registerNode(initialUri)
+        .accounts({
+          authority: wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+          userTokenAccount,
+          vaultTokenAccount,
+          vault: vaultPda,
+          mint,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: splToken.TOKEN_PROGRAM_ID,
+          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+        })
+        .signers([nodeDeviceKeypair])
+        .rpc();
+
+      // --- UPDATE URI ---
+      const newUri = "https://updated-node-uri.com/node.json";
+
+      await program.methods
+        .updateUri(newUri)
+        .accounts({
+          authority: wallet.publicKey,
+          nodes: nodeDeviceKeypair.publicKey,
+        })
+        .rpc();
+
+      // --- ASSERTIONS ---
+      const nodeDevice = await program.account.nodeDevice.fetch(nodeDeviceKeypair.publicKey);
+      assert.equal(nodeDevice.uri, newUri, "Node URI should be updated to the new value");
+    });
+
+    it("Fails if URI exceeds the maximum length", async () => {
+      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const initialUri = "https://initial-uri-for-long-test.com/node.json";
+
+      // Register node
+      await program.methods
+        .registerNode(initialUri)
+        .accounts({
+          authority: wallet.publicKey,
+          nodeDevice: nodeDeviceKeypair.publicKey,
+          networkStats: networkStatsPda,
+          userTokenAccount,
+          vaultTokenAccount,
+          vault: vaultPda,
+          mint,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: splToken.TOKEN_PROGRAM_ID,
+          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+        })
+        .signers([nodeDeviceKeypair])
+        .rpc();
+
+      const oversizedUri = "a".repeat(257); // 1 char more than MAX_URI_LENGTH
+
+      try {
+        await program.methods
+          .updateUri(oversizedUri)
+          .accounts({
+            authority: wallet.publicKey,
+            nodes: nodeDeviceKeypair.publicKey,
+          })
+          .rpc();
+        assert.fail("Transaction should fail due to URI being too long");
+      } catch (err: any) {
+        const errorCode = err?.error?.errorCode?.code;
+        assert.equal(errorCode, "UriTooLong", "Expected a UriTooLong error");
+      }
+    });
+  });
+
 });
