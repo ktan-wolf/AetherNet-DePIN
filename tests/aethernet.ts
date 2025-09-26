@@ -1,6 +1,11 @@
 import * as anchor from "@coral-xyz/anchor";
 import * as splToken from "@solana/spl-token";
-import { Keypair, PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import {
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  SYSVAR_RENT_PUBKEY,
+} from "@solana/web3.js";
 import { Program } from "@coral-xyz/anchor";
 import { Aethernet } from "../target/types/aethernet";
 import { assert } from "chai";
@@ -23,9 +28,35 @@ describe("AetherNet Program", () => {
   // Staking amount constant (BigInt)
   const STAKE_AMOUNT = BigInt(10 * 10 ** 6); // 10 tokens with 6 decimals
 
+  // ------------------ Helpers ------------------
+  async function registerTestNode(uri: string, signer: Keypair) {
+    await program.methods
+      .registerNode(uri)
+      .accounts({
+        authority: wallet.publicKey,
+        nodeDevice: signer.publicKey,
+        networkStats: networkStatsPda,
+        userTokenAccount,
+        vaultTokenAccount,
+        vault: vaultPda,
+        mint,
+        systemProgram: SystemProgram.programId,
+        tokenProgram: splToken.TOKEN_PROGRAM_ID,
+        associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+        rent: SYSVAR_RENT_PUBKEY,
+      })
+      .signers([signer])
+      .rpc();
+  }
+
+  async function getTokenBalance(account: PublicKey) {
+    return (await splToken.getAccount(provider.connection, account)).amount;
+  }
+
+  // ------------------ Setup ------------------
   before(async () => {
     // 1. Derive PDAs
-    [networkStatsPda] = await anchor.web3.PublicKey.findProgramAddress(
+    [networkStatsPda] = await PublicKey.findProgramAddress(
       [Buffer.from("network-stats")],
       program.programId
     );
@@ -37,40 +68,42 @@ describe("AetherNet Program", () => {
 
     // 2. Airdrop SOL if needed
     const balance = await provider.connection.getBalance(wallet.publicKey);
-    if (balance < 2e9) { // 2 SOL
+    if (balance < 2e9) {
       await provider.connection.requestAirdrop(wallet.publicKey, 2e9);
     }
 
-    // 3. Initialize network (one-time setup)
+    // 3. Initialize network
     try {
       await program.methods
         .initializeNetwork()
         .accounts({
           networkStats: networkStatsPda,
           authority: wallet.publicKey,
-          systemProgram: anchor.web3.SystemProgram.programId,
+          systemProgram: SystemProgram.programId,
         })
         .rpc();
-    } catch (e) {
+    } catch {
       // ignore if already initialized
     }
 
-    // 4. Create token mint
+    // 4. Create token mint (PublicKey)
     mint = await splToken.createMint(
       provider.connection,
       wallet.payer,
-      wallet.publicKey, // mint authority
-      null, // freeze authority
-      6 // decimals
+      wallet.publicKey,
+      null,
+      6
     );
 
-    // 5. Create user's associated token account and mint tokens to it
-    userTokenAccount = (await splToken.getOrCreateAssociatedTokenAccount(
-      provider.connection,
-      wallet.payer,
-      mint,
-      wallet.publicKey
-    )).address;
+    // 5. Create user's associated token account and mint tokens
+    userTokenAccount = (
+      await splToken.getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        wallet.payer,
+        mint,
+        wallet.publicKey
+      )
+    ).address;
 
     await splToken.mintTo(
       provider.connection,
@@ -78,48 +111,33 @@ describe("AetherNet Program", () => {
       mint,
       userTokenAccount,
       wallet.payer,
-      1000 * 10 ** 6 // 1000 tokens
+      1000 * 10 ** 6
     );
 
-    // 6. Get the address of the vault's ATA (the program will create it)
+    // 6. Vault ATA (owned by PDA)
     vaultTokenAccount = await splToken.getAssociatedTokenAddress(
       mint,
       vaultPda,
-      true // allow owner to be a PDA
+      true
     );
   });
 
+  // ------------------ Tests ------------------
+
   describe("Node Registration and Staking", () => {
     it("Registers a new node and stakes tokens successfully", async () => {
-      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
+      const nodeDeviceKeypair = Keypair.generate();
       const uri = "https://mydevice.example/metadata.json";
 
-      const userBalanceBefore = (await splToken.getAccount(provider.connection, userTokenAccount)).amount;
-      const vaultBalanceBefore = await provider.connection.getAccountInfo(vaultTokenAccount)
-          ? (await splToken.getAccount(provider.connection, vaultTokenAccount)).amount
-          : BigInt(0);
+      const userBalanceBefore = await getTokenBalance(userTokenAccount);
+      const vaultBalanceBefore = await provider.connection.getAccountInfo(
+        vaultTokenAccount
+      )
+        ? await getTokenBalance(vaultTokenAccount)
+        : BigInt(0);
 
-      // Register the node
-      await program.methods
-        .registerNode(uri)
-        .accounts({
-          authority: wallet.publicKey,
-          nodeDevice: nodeDeviceKeypair.publicKey,
-          networkStats: networkStatsPda,
-          userTokenAccount,
-          vaultTokenAccount,
-          vault: vaultPda,
-          mint,
-          systemProgram: anchor.web3.SystemProgram.programId,
-          tokenProgram: splToken.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .signers([nodeDeviceKeypair])
-        .rpc();
+      await registerTestNode(uri, nodeDeviceKeypair);
 
-      // --- Assertions ---
-      // 1. Check NodeDevice account data
       const nodeDevice = await program.account.nodeDevice.fetch(
         nodeDeviceKeypair.publicKey
       );
@@ -129,83 +147,47 @@ describe("AetherNet Program", () => {
       );
       assert.equal(nodeDevice.uri, uri);
 
-      // 2. Check NetworkStats
       const networkStats = await program.account.networkStats.fetch(
         networkStatsPda
       );
       assert.isTrue(networkStats.totalNodes.toNumber() > 0);
 
-      // 3. Check token balances
-      const userBalanceAfter = (await splToken.getAccount(provider.connection, userTokenAccount)).amount;
-      const vaultBalanceAfter = (await splToken.getAccount(provider.connection, vaultTokenAccount)).amount;
+      const userBalanceAfter = await getTokenBalance(userTokenAccount);
+      const vaultBalanceAfter = await getTokenBalance(vaultTokenAccount);
 
-      assert.strictEqual((vaultBalanceAfter - vaultBalanceBefore).toString(), STAKE_AMOUNT.toString(), "Vault should hold the newly staked tokens");
-      assert.strictEqual((userBalanceBefore - userBalanceAfter).toString(), STAKE_AMOUNT.toString(), "User balance should decrease by stake amount");
+      assert.strictEqual(
+        (vaultBalanceAfter - vaultBalanceBefore).toString(),
+        STAKE_AMOUNT.toString()
+      );
+      assert.strictEqual(
+        (userBalanceBefore - userBalanceAfter).toString(),
+        STAKE_AMOUNT.toString()
+      );
     });
 
     it("Fails if URI is too long", async () => {
-      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-      // This URI is 257 characters long, which exceeds our limit of 256.
-      const oversizedUri = "a".repeat(257); 
+      const nodeDeviceKeypair = Keypair.generate();
+      const oversizedUri = "a".repeat(257);
 
       try {
-        await program.methods
-          .registerNode(oversizedUri)
-          .accounts({
-            authority: wallet.publicKey,
-            nodeDevice: nodeDeviceKeypair.publicKey,
-            networkStats: networkStatsPda,
-            userTokenAccount,
-            vaultTokenAccount,
-            vault: vaultPda,
-            mint,
-            systemProgram: anchor.web3.SystemProgram.programId,
-            tokenProgram: splToken.TOKEN_PROGRAM_ID,
-            associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-            rent: SYSVAR_RENT_PUBKEY,
-          })
-          .signers([nodeDeviceKeypair])
-          .rpc();
+        await registerTestNode(oversizedUri, nodeDeviceKeypair);
         assert.fail("Transaction should have failed due to oversized URI.");
       } catch (err: any) {
-        // We now assert against the specific custom error defined in the program.
         const errorCode = err?.error?.errorCode?.code;
-        assert.equal(errorCode, "UriTooLong", "Expected a UriTooLong error");
+        assert.equal(errorCode, "UriTooLong");
       }
     });
   });
 
   describe("Node Deregistration and Unstaking", () => {
-    
-    it("Allows rightful authority to deregister their node and get stake back", async () => {
-      // --- SETUP FOR THIS TEST ---
-      // This test is now self-contained. It registers a node and then deregisters it.
-      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-      const uri = "https://deregister-test.com/node.json";
-      await program.methods
-        .registerNode(uri)
-        .accounts({
-          authority: wallet.publicKey,
-          nodeDevice: nodeDeviceKeypair.publicKey,
-          networkStats: networkStatsPda,
-          userTokenAccount,
-          vaultTokenAccount,
-          vault: vaultPda,
-          mint,
-          systemProgram: anchor.web3.SystemProgram.programId,
-          tokenProgram: splToken.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .signers([nodeDeviceKeypair])
-        .rpc();
+    it("Allows rightful authority to deregister and unstake", async () => {
+      const nodeDeviceKeypair = Keypair.generate();
+      await registerTestNode("https://deregister-test.com/node.json", nodeDeviceKeypair);
 
-      // --- STATE BEFORE DEREGISTRATION ---
       const statsBefore = await program.account.networkStats.fetch(networkStatsPda);
-      const userBalanceBefore = (await splToken.getAccount(provider.connection, userTokenAccount)).amount;
-      const vaultBalanceBefore = (await splToken.getAccount(provider.connection, vaultTokenAccount)).amount;
+      const userBalanceBefore = await getTokenBalance(userTokenAccount);
+      const vaultBalanceBefore = await getTokenBalance(vaultTokenAccount);
 
-      // --- EXECUTE DEREGISTRATION ---
       await program.methods
         .deregisterNode()
         .accounts({
@@ -220,17 +202,26 @@ describe("AetherNet Program", () => {
         })
         .rpc();
 
-      // --- ASSERTIONS ---
       const statsAfter = await program.account.networkStats.fetch(networkStatsPda);
-      const userBalanceAfter = (await splToken.getAccount(provider.connection, userTokenAccount)).amount;
-      const vaultBalanceAfter = (await splToken.getAccount(provider.connection, vaultTokenAccount)).amount;
+      const userBalanceAfter = await getTokenBalance(userTokenAccount);
+      const vaultBalanceAfter = await getTokenBalance(vaultTokenAccount);
 
-      assert.equal(statsAfter.totalNodes.toNumber(), statsBefore.totalNodes.toNumber() - 1, "Total nodes should decrease by one");
-      assert.strictEqual((userBalanceAfter - userBalanceBefore).toString(), STAKE_AMOUNT.toString(), "User should get their stake back");
-      assert.strictEqual((vaultBalanceBefore - vaultBalanceAfter).toString(), STAKE_AMOUNT.toString(), "Vault balance should decrease by the stake amount");
+      assert.equal(
+        statsAfter.totalNodes.toNumber(),
+        statsBefore.totalNodes.toNumber() - 1
+      );
+      assert.strictEqual(
+        (userBalanceAfter - userBalanceBefore).toString(),
+        STAKE_AMOUNT.toString()
+      );
+      assert.strictEqual(
+        (vaultBalanceBefore - vaultBalanceAfter).toString(),
+        STAKE_AMOUNT.toString()
+      );
 
-      // Node device account should be closed (rent returned)
-      const nodeDeviceAccountInfo = await provider.connection.getAccountInfo(nodeDeviceKeypair.publicKey);
+      const nodeDeviceAccountInfo = await provider.connection.getAccountInfo(
+        nodeDeviceKeypair.publicKey
+      );
       assert.isNull(nodeDeviceAccountInfo);
     });
 
@@ -238,35 +229,16 @@ describe("AetherNet Program", () => {
       const anotherNodeKeypair = Keypair.generate();
       const maliciousUser = Keypair.generate();
 
-      // Give the malicious user SOL to pay for the transaction
       await provider.connection.requestAirdrop(maliciousUser.publicKey, 1e9);
 
-      // Register a node with our main wallet
-      await program.methods
-        .registerNode("https://another-node.com")
-        .accounts({
-          authority: wallet.publicKey,
-          nodeDevice: anotherNodeKeypair.publicKey,
-          networkStats: networkStatsPda,
-          userTokenAccount,
-          vaultTokenAccount,
-          vault: vaultPda,
-          mint,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: splToken.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .signers([anotherNodeKeypair])
-        .rpc();
+      await registerTestNode("https://another-node.com", anotherNodeKeypair);
 
-      // Attempt to deregister with the malicious user
       try {
         await program.methods
           .deregisterNode()
           .accounts({
             authority: maliciousUser.publicKey,
-            nodeDevice: anotherNodeKeypair.publicKey, // node owned by main wallet
+            nodeDevice: anotherNodeKeypair.publicKey,
             networkStats: networkStatsPda,
             mint,
             userTokenAccount,
@@ -276,42 +248,20 @@ describe("AetherNet Program", () => {
           })
           .signers([maliciousUser])
           .rpc();
-        assert.fail("Malicious user should not be able to deregister the node.");
+        assert.fail("Malicious user should not be able to deregister");
       } catch (err: any) {
-        // The `has_one = authority` constraint should catch this.
         const code = err?.error?.errorCode?.code ?? "";
-        assert.equal(code, "ConstraintHasOne", "Expected a has_one constraint violation");
+        assert.equal(code, "ConstraintHasOne");
       }
     });
   });
 
-
   describe("Node URI Update", () => {
-    it("Allows the authority to update the node URI", async () => {
-      // --- SETUP: register a new node ---
-      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-      const initialUri = "https://initial-node-uri.com/node.json";
+    it("Allows authority to update URI", async () => {
+      const nodeDeviceKeypair = Keypair.generate();
+      await registerTestNode("https://initial-node.com", nodeDeviceKeypair);
 
-      await program.methods
-        .registerNode(initialUri)
-        .accounts({
-          authority: wallet.publicKey,
-          nodeDevice: nodeDeviceKeypair.publicKey,
-          networkStats: networkStatsPda,
-          userTokenAccount,
-          vaultTokenAccount,
-          vault: vaultPda,
-          mint,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: splToken.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .signers([nodeDeviceKeypair])
-        .rpc();
-
-      // --- UPDATE URI ---
-      const newUri = "https://updated-node-uri.com/node.json";
+      const newUri = "https://updated-node.com";
 
       await program.methods
         .updateUri(newUri)
@@ -321,35 +271,17 @@ describe("AetherNet Program", () => {
         })
         .rpc();
 
-      // --- ASSERTIONS ---
-      const nodeDevice = await program.account.nodeDevice.fetch(nodeDeviceKeypair.publicKey);
-      assert.equal(nodeDevice.uri, newUri, "Node URI should be updated to the new value");
+      const nodeDevice = await program.account.nodeDevice.fetch(
+        nodeDeviceKeypair.publicKey
+      );
+      assert.equal(nodeDevice.uri, newUri);
     });
 
-    it("Fails if URI exceeds the maximum length", async () => {
-      const nodeDeviceKeypair = anchor.web3.Keypair.generate();
-      const initialUri = "https://initial-uri-for-long-test.com/node.json";
+    it("Fails if URI exceeds max length", async () => {
+      const nodeDeviceKeypair = Keypair.generate();
+      await registerTestNode("https://initial-long.com", nodeDeviceKeypair);
 
-      // Register node
-      await program.methods
-        .registerNode(initialUri)
-        .accounts({
-          authority: wallet.publicKey,
-          nodeDevice: nodeDeviceKeypair.publicKey,
-          networkStats: networkStatsPda,
-          userTokenAccount,
-          vaultTokenAccount,
-          vault: vaultPda,
-          mint,
-          systemProgram: SystemProgram.programId,
-          tokenProgram: splToken.TOKEN_PROGRAM_ID,
-          associatedTokenProgram: splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-          rent: SYSVAR_RENT_PUBKEY,
-        })
-        .signers([nodeDeviceKeypair])
-        .rpc();
-
-      const oversizedUri = "a".repeat(257); // 1 char more than MAX_URI_LENGTH
+      const oversizedUri = "a".repeat(257);
 
       try {
         await program.methods
@@ -359,12 +291,11 @@ describe("AetherNet Program", () => {
             nodes: nodeDeviceKeypair.publicKey,
           })
           .rpc();
-        assert.fail("Transaction should fail due to URI being too long");
+        assert.fail("Should fail due to oversized URI");
       } catch (err: any) {
         const errorCode = err?.error?.errorCode?.code;
-        assert.equal(errorCode, "UriTooLong", "Expected a UriTooLong error");
+        assert.equal(errorCode, "UriTooLong");
       }
     });
   });
-
 });
